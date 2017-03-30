@@ -20,19 +20,73 @@ Chef Server uses public key encryption to authenticate API requests.  This requi
 
 1. [Create a customer master key (CMK) in KMS](http://docs.aws.amazon.com/kms/latest/developerguide/create-keys.html) and note the keyId that is automatically generated.
   * If you will use the supplied Terraform example in this repository you do not need to add a Key User yet.  If you are following this as a reference and already have an IAM role for your Lambda function you can add it now as a Key User.  Your IAM user needs kms.encrypt permissions to encrypt the certificate, while your Lambda user (via an IAM role) needs kms.decrypt permissions at runtime to access the certificate.
-2. Encrypt the certificate in KMS using the AWS CLI tools:  `aws kms encrypt --key-id KEY_FROM_STEP_1 --plaintext file://your_private_key.pem`
-3.	You will receive a response with a CiphertextBlob if successful.  An example of a successful response will look like:
+  
+2. Encrypt the certificate in KMS using the AWS CLI tools:
+
+```
+aws kms encrypt --key-id KEY_FROM_STEP_1 --plaintext file://your_private_key.pem`
+```
+
+3.You will receive a response with a CiphertextBlob if successful.  An example of a successful response will look like:
+
   ```
   {
-      "KeyId": "arn:aws:kms:us-east-1:123456789000:key/14d2aba8-5142-4612-a836-7cf17284c8fd",
-      "CiphertextBlob": "CiCgJ6/K9CIXrDdsJ1fES7kBIJ0STEn+VwpMBjzsHVnH2xKQAQEBAgB4oCevyvQiF6w3bCdXxEu5ASCdEkxJ/lcKTAY87B1Zx9sAAABnMGUGCSqGSIb3DQEHBqBYMFYCAQAwUQYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAyk4nsWzRAWTiU4syoCARCAJDHOtYNdSYI6wlso8SgATXKJ0WF5s3qhLcVqMKxaTOO3bCI6Lw=="
+      "KeyId": "arn:aws:kms:us-east-1:123456789000:key/<YOUR KEY ID HERE>",
+      "CiphertextBlob": "<CIPHER TEXT BLOB HERE>"
   }
   ```
 
-4. Copy this CiphertextBlob into a new file and store it in the same directory as the Lambda function; this is required so it can be packaged up with the function itself. I’ve used encrypted_pem.txt as the file name in my example, given the encrypted object is a certificate and private key, which is commonly name with the .pem file extension. Note the CiphertextBlob output is base64 encoded by the AWS CLI unless you send the output to a binary file using the fileb:// parameter. See the AWS KMS CLI help for more information on input and output encoding.
+4. Copy just the CiphertextBlob value into a new file and store it in the same directory as the Lambda function; this is required so it can be packaged up with the function itself. I’ve used encrypted_pem.txt as the file name in my example, given the encrypted object is a certificate and private key, which is commonly name with the .pem file extension.
+
+***Note*** the CiphertextBlob output is base64 encoded by the AWS CLI unless you send the output to a binary file using:
+
+```
+fileb://path/to/your/file
+```
+
+To test decryption, you can try something like this:
+
+```
+aws --profile <your profile name here> kms decrypt --ciphertext-blob \n
+fileb://<(cat encrypted_pem.txt | base64 -D) --output text \n
+--query Plaintext | base64 -D
+```
+***Note*** - On a Mac, use `-D`, on any other *nix environment, use `-d`.
+
+This should return to you the exact plaintext pem you encrypted with your KMS key above.
+ 
+See the [AWS KMS CLI help](http://docs.aws.amazon.com/cli/latest/reference/kms/index.html) for more information on input and output encoding.
 
 ## Lambda Function
-Modify the `REGION`, `CHEF_SERVER_URL`, and `USERNAME` variables as appropriate in `lambda/main.py`.
+Modify the `REGION`, `CHEF_SERVER_URL`, and `USERNAME` variables as appropriate in `lambda/local_config.py`.
+
+Once you've uploaded the lambda, you can send it a test Cloudwatch logs event.  To do this, go to the lambda dashboard, select functions, and select the lamba you just created.
+
+Then you can select "Actions", and "Configure test event".
+
+Choose a "CloudWatch logs" event and configure it like this:
+
+```
+{
+  "version": "0",
+  "id": "6a7e8feb-b491-4cf7-a9f1-bf3703467718",
+  "detail-type": "EC2 Instance State-change Notification",
+  "source": "aws.ec2",
+  "account": "<YOUR ACCT ID>",
+  "time": "2015-12-22T18:43:48Z",
+  "region": "us-east-1",
+  "resources": [
+    "arn:aws:ec2:<YOUR REGION>:<YOUR ACCT ID>:instance/<YOUR INSTANCE ID>"
+  ],
+  "detail": {
+    "instance-id": "<YOUR INSTANCE ID>",
+    "state": "terminated"
+  }
+}
+```
+For more details about the events, see the [AWS Cloudwatch events and patterns documentation.](http://docs.aws.amazon.com/AmazonCloudWatch/latest/events/CloudWatchEventsandEventPatterns.html)
+
+***Note*** - Make sure you are targeting an ec2 instance that can truly be removed!
 
 ## Chef Server Permissions
 The user making the request needs the appropriate permissions in Chef Server to query and delete nodes.  As described above, you'll need access to the private key for this user.
@@ -45,6 +99,7 @@ Remember, CloudWatch Events will give us the Instance ID when an instance is ter
 
 #### Naming Nodes with the Instance ID
 Instead of using an attribute, a simple alternative would be to name all nodes using their Instance ID.  Then you can modify the Lambda function to just fetch the Node by name instead of using "Search".
+
 ```
 node = Node('instance-id')
 node.delete()
@@ -60,6 +115,37 @@ Then, simply run `terraform apply terraform` from the parent directory.  This wi
 
 After running Terraform, you will need to manually add the IAM Role created as a Key User for the KMS Key you created earlier.  You can do this by using the console and adding the role name that was printed to the screen as output from Terraform ("chef_node_cleanup_lambda", by default).
 
+***Note*** - If you're running the lambda within a VPC, you'll have to alter the policy attached to the role the lambda needs.
+For example:
+
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:CreateNetworkInterface",
+                "ec2:DeleteNetworkInterface",
+                "kms:Decrypt"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt"
+            ],
+            "Resource": "<ARN OF YOUR KEY>"
+        }
+    ]
+}
+```
+
 ## If you don't want to use Terraform
 If you'd prefer to not use Terraform, you should still follow the Prerequisites section to get setup.  Then you'll need to do the following manually:
 
@@ -74,7 +160,7 @@ The Lambda function code can be found at `lambda/main.py` for your reference.  E
 If you used Terraform, you can cleanup with `terraform destroy terraform`
 
 # License
-Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
 
