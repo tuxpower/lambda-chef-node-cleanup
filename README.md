@@ -130,8 +130,7 @@ For example:
                 "logs:PutLogEvents",
                 "ec2:DescribeNetworkInterfaces",
                 "ec2:CreateNetworkInterface",
-                "ec2:DeleteNetworkInterface",
-                "kms:Decrypt"
+                "ec2:DeleteNetworkInterface"
             ],
             "Resource": "*"
         },
