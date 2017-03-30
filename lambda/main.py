@@ -29,6 +29,7 @@ REGION= local_config.REGION
 CHEF_SERVER_URL = local_config.CHEF_SERVER_URL
 USERNAME = local_config.USERNAME
 VERIFY_SSL = local_config.VERIFY_SSL
+DEBUG = local_config.DEBUG
 
 def log_event(event):
     """Logs event information for debugging"""
@@ -75,10 +76,16 @@ def handle(event, _context):
                 node = chef.Node(instance.object.name)
                 client = chef.Client(instance.object.name)
                 try:
-                    node.delete()
-                    LOGGER.info('===Node Delete: SUCCESS===')
-                    client.delete()
-                    LOGGER.info('===Client Delete: SUCCESS===')
+                    LOGGER.info('About to delete the node named - ' + node.name)
+                    LOGGER.info('About to delete the client named - ' + client.name)
+                    if not debug:
+                      node.delete()
+                      LOGGER.info('===Node Delete: SUCCESS===')
+                      client.delete()
+                      LOGGER.info('===Client Delete: SUCCESS===')
+                    else:
+                      LOGGER.info('Would have deleted the node named - ' + node.name + ' here, but we are in DEBUG mode')
+                      LOGGER.info('Would have deleted the client named - ' + client.name + ' here, but we are in DEBUG mode')
                     return True
                 except ChefServerNotFoundError as err:
                     LOGGER.error(err)
