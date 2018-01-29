@@ -45,10 +45,10 @@ def get_instance_id(event):
         LOGGER.error(err)
         return False
 
-def get_pem():
+def get_pem(cipherfile):
     """Decrypt the Ciphertext Blob to get USERNAME's pem file"""
     try:
-        with open('encrypted_pem.txt', 'r') as encrypted_pem:
+        with open('cipherfile', 'r') as encrypted_pem:
             pem_file = encrypted_pem.read()
 
         kms = boto3.client('kms', region_name=REGION)
@@ -61,9 +61,11 @@ def handle(event, _context):
     """Lambda Handler"""
     log_event(event)
 
+    cipherfile = os.environ['CIPHER_FILE']
+
     # If you're using a self signed certificate change
     # the ssl_verify argument to False
-    with chef.ChefAPI(CHEF_SERVER_URL, get_pem(), USERNAME, ssl_verify=VERIFY_SSL):
+    with chef.ChefAPI(CHEF_SERVER_URL, get_pem(cipherfile), USERNAME, ssl_verify=VERIFY_SSL):
         instance_id = get_instance_id(event)
         try:
             search = chef.Search('node', 'ec2_instance_id:' + instance_id)

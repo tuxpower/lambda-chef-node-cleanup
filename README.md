@@ -36,7 +36,7 @@ aws kms encrypt --key-id KEY_FROM_STEP_1 --plaintext file://your_private_key.pem
   }
   ```
 
-4. Copy just the CiphertextBlob value into a new file and store it in the same directory as the Lambda function; this is required so it can be packaged up with the function itself. I’ve used encrypted_pem.txt as the file name in my example, given the encrypted object is a certificate and private key, which is commonly name with the .pem file extension.
+4. Copy just the CiphertextBlob value into a new file and store it in the same directory as the Lambda function; this is required so it can be packaged up with the function itself. I’ve used encrypted_PROD_pem.txt as the file name in my example, given the encrypted object is a certificate and private key, which is commonly name with the .pem file extension. Lambda supports environment variables wich we can use to pass diferent CiphertextBlob depending on the account you are working on e.g. dev, staging, prod.
 
 ***Note*** the CiphertextBlob output is base64 encoded by the AWS CLI unless you send the output to a binary file using:
 
@@ -48,7 +48,7 @@ To test decryption, you can try something like this:
 
 ```
 aws --profile <your profile name here> kms decrypt --ciphertext-blob \n
-fileb://<(cat encrypted_pem.txt | base64 -D) --output text \n
+fileb://<(cat encrypted_PROD_pem.txt | base64 -D) --output text \n
 --query Plaintext | base64 -D
 ```
 ***Note*** - On a Mac, use `-D`, on any other *nix environment, use `-d`.
